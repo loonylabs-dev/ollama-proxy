@@ -10,12 +10,15 @@ CHECK_INTERVAL=${CHECK_INTERVAL:-5}
 RESTART_COOLDOWN=${RESTART_COOLDOWN:-60}
 LOG_LEVEL=${LOG_LEVEL:-"INFO"}
 
-# Patterns that indicate GPU fallback
+# Patterns that indicate GPU fallback or CUDA errors
 PROBLEM_PATTERNS=(
     "insufficient VRAM to load any model layers"
     "offloaded 0/[0-9]* layers to GPU"
     "gpu VRAM usage didn't recover within timeout"
     "runner.vram=\"0 B\""
+    "cuda driver library failed to get device context"
+    "ggml_cuda_init: failed to initialize CUDA: no CUDA-capable device is detected"
+    "Failed to initialize NVML: Unknown Error"
 )
 
 # Colors for console output (disabled in container by default)
