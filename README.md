@@ -342,18 +342,33 @@ The setup supports NVIDIA GPUs with:
 ```
 ollama-proxy/
 ├── src/                          # Source code
-├── ollama/                       # Ollama configuration
+│   ├── index.ts                 # Main proxy server
+│   ├── types/                   # TypeScript type definitions
+│   └── utils/                   # Utility functions (transformers)
+├── watchdog-gpu/                # GPU monitoring container
+│   ├── Dockerfile               # Watchdog container image
+│   └── watchdog.sh              # Monitoring script
+├── ollama/                      # Ollama configuration
 │   └── ollama.json              # Model settings
-├── cloudflare/                   # Cloudflare tunnel config
+├── cloudflare/                  # Cloudflare tunnel config
 │   ├── config.yml               # Tunnel config (ignored)
 │   ├── config.example.yml       # Tunnel template
 │   └── *.json                   # Credentials (ignored)
+├── logs/                        # Log files
+│   └── watchdog/                # Watchdog logs
+├── docs/                        # Documentation
+│   ├── README.md                # Documentation index
+│   ├── DOCKER_COMPOSE.md        # Docker Compose guide
+│   └── OLLAMA_SETTINGS.md       # Ollama configuration
 ├── model-routing.json           # Model routing config (ignored, user-specific)
 ├── model-routing.example.json   # Model routing template
 ├── docker-compose.yml           # Main Docker setup
 ├── docker-compose.example.yml   # Example configuration
+├── Dockerfile                   # Proxy container image
+├── .env                         # Environment variables (ignored)
 ├── .env.example                 # Environment template
-└── docs/                        # Documentation
+├── package.json                 # Node.js dependencies
+└── tsconfig.json                # TypeScript configuration
 ```
 
 ## 🔒 Security Notes
