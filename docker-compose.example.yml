@@ -1,12 +1,12 @@
 version: '3.9'
 services:
-  # Ollama Service
-  ollama:
+  # Ollama GPU Service
+  ollama-gpu:
     image: ollama/ollama:0.11.4
     pull_policy: if_not_present
     restart: unless-stopped
     volumes:
-      - ollama_data:/root/.ollama
+      - ollama_gpu_data:/root/.ollama
       - ./ollama/ollama.json:/root/.ollama/ollama.json
     networks:
       - ollama_network
@@ -34,16 +34,46 @@ services:
               count: 1  # Use only 1 GPU
               capabilities: [gpu]
     ulimits:
-      memlock: -1  # Unlimited locked memory    
+      memlock: -1  # Unlimited locked memory
+
+  # Ollama CPU Service
+  ollama-cpu:
+    image: ollama/ollama:0.11.4
+    pull_policy: if_not_present
+    restart: unless-stopped
+    volumes:
+      - ollama_cpu_data:/root/.ollama
+      - ./ollama/ollama.json:/root/.ollama/ollama.json
+    networks:
+      - ollama_network
+    environment:
+      - OLLAMA_DEBUG=1
+      - OLLAMA_KEEP_ALIVE=60m
+      - OLLAMA_VERBOSE=1
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_NUM_PARALLEL=4  # More parallel requests for CPU
+      - OLLAMA_NUM_CTX=16384
+      - OLLAMA_NUM_THREAD=16   # More threads for CPU processing
+      - OLLAMA_MLOCK=false
+      - OLLAMA_NUM_BATCH=512
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 8G
+    command: serve
 
   proxy:
     build: .
     restart: unless-stopped
     environment:
       - API_KEY=${API_KEY}  # Set this in your environment or .env file
-      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_GPU_URL=${OLLAMA_GPU_URL:-http://ollama-gpu:11434}
+      - OLLAMA_CPU_URL=${OLLAMA_CPU_URL:-http://ollama-cpu:11434}
     depends_on:
-      - ollama
+      - ollama-gpu
+      - ollama-cpu
     networks:
       - ollama_network
 
@@ -60,7 +90,8 @@ services:
       - proxy
 
 volumes:
-  ollama_data:
+  ollama_gpu_data:
+  ollama_cpu_data:
 
 networks:
   ollama_network:

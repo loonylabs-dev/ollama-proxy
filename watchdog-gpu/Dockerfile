@@ -17,8 +17,9 @@ RUN mkdir -p /var/log/watchdog
 COPY watchdog.sh /usr/local/bin/watchdog.sh
 RUN chmod +x /usr/local/bin/watchdog.sh
 
-# Set environment defaults
-ENV MONITORED_CONTAINER="ollama-proxy-ollama-1" \
+# Set environment defaults (GPU Watchdog)
+ENV MONITORED_CONTAINER="ollama-proxy-ollama-gpu-1" \
+    COMPOSE_SERVICE_NAME="ollama-gpu" \
     CHECK_INTERVAL="5" \
     RESTART_COOLDOWN="60" \
     LOG_LEVEL="INFO"

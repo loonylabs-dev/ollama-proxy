@@ -31,7 +31,9 @@ A simple proxy server for Ollama API requests with authentication, designed to p
 - **Docker Support**: Complete containerized setup with Docker Compose
 - **Cloudflare Tunnel Integration**: Built-in support for secure external access
 - **Health Check Endpoint**: Monitor proxy status
-- **GPU Acceleration**: NVIDIA GPU support for Ollama container
+- **GPU & CPU Support**: Dual Ollama instances with intelligent routing
+- **Flexible Compute Selection**: Route requests to GPU or CPU via header
+- **GPU Acceleration**: NVIDIA GPU support for Ollama GPU container
 - **Flexible Configuration**: Environment-based configuration
 
 ## 🚀 Quick Start
@@ -65,11 +67,17 @@ A simple proxy server for Ollama API requests with authentication, designed to p
    # or directly: docker-compose up -d
    ```
 
-4. **Download models** (in Ollama container):
+4. **Download models** (in Ollama containers):
    ```bash
-   docker exec -it ollama-proxy-ollama-1 /bin/bash
+   # For GPU instance
+   docker exec -it ollama-proxy-ollama-gpu-1 /bin/bash
    ollama pull llama3
    ollama pull codellama
+
+   # For CPU instance (optional - for smaller models)
+   docker exec -it ollama-proxy-ollama-cpu-1 /bin/bash
+   ollama pull llama3.2:1b
+   ollama pull phi3:mini
    ```
 
 <details>
@@ -100,6 +108,35 @@ A simple proxy server for Ollama API requests with authentication, designed to p
 ## 🔌 API Usage
 
 The proxy supports both native Ollama API and OpenAI-compatible endpoints. Choose the API that best fits your use case:
+
+### 🎯 CPU/GPU Routing
+
+The proxy runs two separate Ollama instances:
+- **GPU Instance** (default): High-performance inference with NVIDIA GPU
+- **CPU Instance**: Fallback for smaller models or when GPU is busy
+
+**Route to specific instance using the `x-compute-type` header:**
+
+```bash
+# GPU (default - no header needed)
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer your_api_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3", "messages": [{"role": "user", "content": "Hello"}]}'
+
+# CPU (explicit routing)
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer your_api_key_here" \
+  -H "x-compute-type: cpu" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3.2:1b", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+**When to use CPU routing:**
+- Small models (≤3B parameters) where CPU is sufficient
+- GPU is occupied with large model inference
+- Testing or development with lightweight models
+- Cost optimization for simple queries
 
 ### Native Ollama API
 
@@ -196,7 +233,8 @@ For secure external access:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `API_KEY` | Required | Authentication key for API access |
-| `OLLAMA_URL` | `http://ollama:11434` (Docker)<br>`http://localhost:11434` (local) | Ollama server URL |
+| `OLLAMA_GPU_URL` | `http://ollama-gpu:11434` (Docker)<br>`http://localhost:11434` (local) | Ollama GPU server URL (default target) |
+| `OLLAMA_CPU_URL` | `http://ollama-cpu:11434` (Docker)<br>`http://localhost:11435` (local) | Ollama CPU server URL (via `x-compute-type: cpu`) |
 | `PORT` | `3000` | Proxy server port (local dev only) |
 
 </details>
@@ -205,8 +243,10 @@ For secure external access:
 <summary>🐳 Docker Configuration</summary>
 
 The Docker setup includes:
-- **Ollama container**: Runs Ollama with GPU support
-- **Proxy container**: Runs the API proxy
+- **Ollama GPU container**: Runs Ollama with NVIDIA GPU support
+- **Ollama CPU container**: Runs Ollama on CPU for smaller models
+- **Proxy container**: Runs the API proxy with intelligent routing
+- **Watchdog GPU container**: Monitors GPU instance health
 - **Cloudflared container**: Provides tunnel access (optional)
 
 </details>
@@ -286,10 +326,16 @@ ollama-proxy/
 
 **Download Models:**
 ```bash
-docker exec -it ollama-proxy-ollama-1 /bin/bash
+# GPU instance
+docker exec -it ollama-proxy-ollama-gpu-1 /bin/bash
 ollama list                    # List installed models
 ollama pull llama3            # Download new models
 ollama pull qwen2.5:7b        # Download specific version
+
+# CPU instance (smaller models recommended)
+docker exec -it ollama-proxy-ollama-cpu-1 /bin/bash
+ollama pull llama3.2:1b       # Small efficient model
+ollama pull phi3:mini         # Lightweight model
 ```
 
 ### Authentication Issues
@@ -310,8 +356,8 @@ ollama pull qwen2.5:7b        # Download specific version
   - Must have both `runtime: nvidia` AND `deploy.resources.reservations.devices`
   - See [GPU Configuration Best Practices](#gpu-initialization-issues) below
 - **Check NVIDIA Docker runtime:** `sudo apt install nvidia-docker2`
-- **Test GPU access in container:** `docker exec ollama-proxy-ollama-1 nvidia-smi`
-- **Check Ollama logs:** `npm run logs:ollama`
+- **Test GPU access in container:** `docker exec ollama-proxy-ollama-gpu-1 nvidia-smi`
+- **Check Ollama logs:** `npm run logs:ollama` or `docker logs ollama-proxy-ollama-gpu-1 -f`
 - **Look for:** "insufficient VRAM" or "offloaded 0/X layers" indicates GPU fallback
 
 ### GPU Initialization Issues
@@ -338,7 +384,7 @@ docker-compose down && docker-compose up -d
 **GPU Configuration Best Practices:** Use both mechanisms for maximum compatibility
 ```yaml
 # ✅ Recommended: Use BOTH for reliable GPU access
-ollama:
+ollama-gpu:
   runtime: nvidia  # Direct GPU access (required!)
   deploy:
     resources:
@@ -377,11 +423,11 @@ deploy:
 # Watchdog starts automatically with the full stack
 docker-compose up -d
 
-# View watchdog logs
-docker logs ollama-proxy-watchdog-1 -f
+# View GPU watchdog logs
+docker logs ollama-proxy-watchdog-gpu-1 -f
 
 # Or view persistent logs
-tail -f logs/watchdog/ollama-watchdog.log
+tail -f logs/watchdog/ollama-gpu-watchdog.log
 ```
 
 **What the watchdog monitors:**

@@ -4,8 +4,9 @@
 # Monitors Ollama logs for GPU fallback issues and automatically restarts the container
 
 # Configuration from environment variables
-MONITORED_CONTAINER=${MONITORED_CONTAINER:-"ollama-proxy-ollama-1"}
-LOG_FILE="/var/log/watchdog/ollama-watchdog.log"
+MONITORED_CONTAINER=${MONITORED_CONTAINER:-"ollama-proxy-ollama-gpu-1"}
+COMPOSE_SERVICE_NAME=${COMPOSE_SERVICE_NAME:-"ollama-gpu"}
+LOG_FILE="/var/log/watchdog/ollama-gpu-watchdog.log"
 CHECK_INTERVAL=${CHECK_INTERVAL:-5}
 RESTART_COOLDOWN=${RESTART_COOLDOWN:-60}
 LOG_LEVEL=${LOG_LEVEL:-"INFO"}
@@ -74,7 +75,7 @@ log_json() {
     fi
 
     # JSON structured log
-    echo "{\"timestamp\":\"$timestamp\",\"level\":\"$level\",\"service\":\"ollama-watchdog\",\"container\":\"$MONITORED_CONTAINER\",\"message\":\"$message\",\"restart_count\":$RESTART_COUNT}" | tee -a "$LOG_FILE"
+    echo "{\"timestamp\":\"$timestamp\",\"level\":\"$level\",\"service\":\"ollama-gpu-watchdog\",\"container\":\"$MONITORED_CONTAINER\",\"message\":\"$message\",\"restart_count\":$RESTART_COUNT}" | tee -a "$LOG_FILE"
 }
 
 # Legacy log function for backwards compatibility
@@ -233,7 +234,7 @@ recreate_container() {
     log_message WARNING "Initiating container recreation #$RESTART_COUNT (via docker compose)"
 
     # Use docker compose to recreate the container
-    if docker compose -p "$COMPOSE_PROJECT_NAME" up -d --force-recreate ollama > /dev/null 2>&1; then
+    if docker compose -p "$COMPOSE_PROJECT_NAME" up -d --force-recreate "$COMPOSE_SERVICE_NAME" > /dev/null 2>&1; then
         log_message SUCCESS "Container recreated successfully via docker compose"
         LAST_RESTART=$current_time
         LAST_RESTART_METHOD="recreate"
@@ -264,7 +265,8 @@ recreate_container() {
 # Monitor logs
 monitor_logs() {
     log_message INFO "Starting Ollama GPU Watchdog (Container Mode)"
-    log_message INFO "Monitoring container: $MONITORED_CONTAINER"
+    log_message INFO "Monitoring GPU container: $MONITORED_CONTAINER"
+    log_message INFO "Compose service name: $COMPOSE_SERVICE_NAME"
     log_message INFO "Log file: $LOG_FILE"
     log_message INFO "Check interval: ${CHECK_INTERVAL}s"
     log_message INFO "Restart cooldown: ${RESTART_COOLDOWN}s"
@@ -334,7 +336,7 @@ monitor_logs() {
 
 # Signal handlers for graceful shutdown
 cleanup() {
-    log_message INFO "Watchdog shutting down gracefully..."
+    log_message INFO "GPU Watchdog shutting down gracefully..."
     log_message INFO "Total restarts performed: $RESTART_COUNT"
     exit 0
 }
@@ -344,10 +346,10 @@ trap cleanup SIGTERM SIGINT
 # Health check endpoint (for Docker health check)
 if [[ "$1" == "healthcheck" ]]; then
     if pgrep -f "watchdog.sh" > /dev/null; then
-        echo "Watchdog is running"
+        echo "GPU Watchdog is running"
         exit 0
     else
-        echo "Watchdog is not running"
+        echo "GPU Watchdog is not running"
         exit 1
     fi
 fi
@@ -355,7 +357,7 @@ fi
 # Main
 main() {
     log_message INFO "============================================"
-    log_message INFO "Ollama GPU Watchdog Container Started"
+    log_message INFO "  Ollama GPU Watchdog Container Started  "
     log_message INFO "============================================"
 
     # Wait a moment for the monitored container to start
