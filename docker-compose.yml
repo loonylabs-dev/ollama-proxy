@@ -72,6 +72,8 @@ services:
   proxy:
     build: .
     restart: unless-stopped
+    volumes:
+      - ./model-routing.json:/app/model-routing.json:ro
     environment:
       - API_KEY=${API_KEY}
       - OLLAMA_GPU_URL=${OLLAMA_GPU_URL:-http://ollama-gpu:11434}

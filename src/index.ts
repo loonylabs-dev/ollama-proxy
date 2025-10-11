@@ -4,12 +4,13 @@ import fetch from 'node-fetch';
 import * as dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { 
-  transformOpenAIToOllama, 
-  transformOllamaToOpenAI, 
+import * as fs from 'fs';
+import {
+  transformOpenAIToOllama,
+  transformOllamaToOpenAI,
   transformOllamaStreamToOpenAI,
   transformOllamaModelsToOpenAI,
-  generateRequestId 
+  generateRequestId
 } from './utils/transformers.js';
 import { OpenAIChatRequest } from './types/openai.js';
 import { OllamaChatResponse, OllamaChatStreamChunk, OllamaModelsResponse } from './types/ollama.js';
@@ -26,17 +27,38 @@ const apiKey = process.env.API_KEY;
 const ollamaGpuUrl = process.env.OLLAMA_GPU_URL || 'http://localhost:11434';
 const ollamaCpuUrl = process.env.OLLAMA_CPU_URL || 'http://localhost:11435';
 
-// Helper function to determine target Ollama URL based on compute type header
-const getOllamaUrl = (req: Request): string => {
-  const computeType = req.headers['x-compute-type'] as string | undefined;
+// Load model routing configuration
+interface ModelRoutingConfig {
+  cpu: string[];
+  gpu: string[];
+}
 
-  if (computeType === 'cpu') {
-    console.log('Routing to CPU instance');
+let modelRoutingConfig: ModelRoutingConfig = { cpu: [], gpu: ['*'] };
+
+try {
+  const configPath = path.join(process.cwd(), 'model-routing.json');
+  if (fs.existsSync(configPath)) {
+    const configFile = fs.readFileSync(configPath, 'utf-8');
+    modelRoutingConfig = JSON.parse(configFile);
+    console.log(`Loaded model routing config: ${modelRoutingConfig.cpu.length} CPU models, GPU: ${modelRoutingConfig.gpu.join(', ')}`);
+  } else {
+    console.warn('model-routing.json not found, using defaults (all models → GPU)');
+  }
+} catch (error) {
+  console.error('Error loading model routing config:', error);
+  console.warn('Falling back to defaults (all models → GPU)');
+}
+
+// Helper function to determine target Ollama URL based on model name
+const getOllamaUrl = (modelName: string): string => {
+  // Check if model is in CPU list
+  if (modelRoutingConfig.cpu.includes(modelName)) {
+    console.log(`Routing model "${modelName}" to CPU instance`);
     return ollamaCpuUrl;
   }
 
-  // Default to GPU
-  console.log('Routing to GPU instance (default)');
+  // Default to GPU (including wildcard "*")
+  console.log(`Routing model "${modelName}" to GPU instance (default)`);
   return ollamaGpuUrl;
 };
 
@@ -52,7 +74,9 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
 // ---- Proxy forwarder: forward raw stream for /api/* (no body-parser here) ----
 const forwardToOllama = async (req: Request, res: Response) => {
   try {
-    const ollamaUrl = getOllamaUrl(req);
+    // For /api/* endpoints, we can't easily extract model from unparsed body
+    // Default to GPU for raw API forwarding
+    const ollamaUrl = ollamaGpuUrl;
     const endpoint = req.path.replace('/api', '');
     const targetUrl = `${ollamaUrl}/api${endpoint}`;
 
@@ -115,8 +139,8 @@ app.use('/v1', express.json({ limit: '50mb' }));
 // OpenAI-compatible chat completions endpoint (uses parsed JSON)
 app.post('/v1/chat/completions', authenticate, async (req: Request, res: Response) => {
   try {
-    const ollamaUrl = getOllamaUrl(req);
     const openaiRequest: OpenAIChatRequest = req.body;
+    const ollamaUrl = getOllamaUrl(openaiRequest.model);
     const ollamaRequest = transformOpenAIToOllama(openaiRequest);
     const requestId = generateRequestId();
 
@@ -218,35 +242,52 @@ app.post('/v1/chat/completions', authenticate, async (req: Request, res: Respons
   }
 });
 
-// Models endpoint (parsing not required)
+// Models endpoint - aggregate models from both CPU and GPU instances
 app.get('/v1/models', authenticate, async (req: Request, res: Response) => {
   try {
-    const ollamaUrl = getOllamaUrl(req);
-    console.log('OpenAI Models request');
+    console.log('OpenAI Models request - fetching from both CPU and GPU instances');
 
-    const targetUrl = `${ollamaUrl}/api/tags`;
-    const response = await fetch(targetUrl, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // Fetch from both instances in parallel
+    const [gpuResponse, cpuResponse] = await Promise.allSettled([
+      fetch(`${ollamaGpuUrl}/api/tags`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+      fetch(`${ollamaCpuUrl}/api/tags`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    ]);
 
-    if (!response.ok) {
-      return res.status(response.status).json({ 
-        error: { 
-          message: `Ollama error: ${response.statusText}`,
-          type: 'api_error',
-          code: response.status
-        }
-      });
+    // Collect models from successful responses
+    const allModels: OllamaModelsResponse = { models: [] };
+
+    if (gpuResponse.status === 'fulfilled' && gpuResponse.value.ok) {
+      const gpuModels = await gpuResponse.value.json() as OllamaModelsResponse;
+      allModels.models.push(...gpuModels.models);
+    } else {
+      console.warn('Failed to fetch GPU models:', gpuResponse.status === 'fulfilled' ? gpuResponse.value.statusText : gpuResponse.reason);
     }
 
-    const ollamaModels: OllamaModelsResponse = await response.json() as OllamaModelsResponse;
-    const openaiModels = transformOllamaModelsToOpenAI(ollamaModels);
+    if (cpuResponse.status === 'fulfilled' && cpuResponse.value.ok) {
+      const cpuModels = await cpuResponse.value.json() as OllamaModelsResponse;
+      allModels.models.push(...cpuModels.models);
+    } else {
+      console.warn('Failed to fetch CPU models:', cpuResponse.status === 'fulfilled' ? cpuResponse.value.statusText : cpuResponse.reason);
+    }
+
+    // Remove duplicates (in case same model exists on both instances)
+    const uniqueModels = Array.from(
+      new Map(allModels.models.map(model => [model.name, model])).values()
+    );
+    allModels.models = uniqueModels;
+
+    const openaiModels = transformOllamaModelsToOpenAI(allModels);
     res.json(openaiModels);
   } catch (error: unknown) {
     const apiError = error instanceof Error ? error : new Error(String(error));
     console.error('OpenAI Models API error:', apiError);
-    res.status(500).json({ 
+    res.status(500).json({
       error: {
         message: 'Internal server error',
         type: 'api_error',
@@ -263,6 +304,7 @@ app.get('/health', authenticate, (req: Request, res: Response) => {
 
 app.listen(port, () => {
   console.log(`Proxy listening on port ${port}`);
-  console.log(`GPU instance: ${ollamaGpuUrl} (default)`);
-  console.log(`CPU instance: ${ollamaCpuUrl} (via x-compute-type: cpu header)`);
+  console.log(`GPU instance: ${ollamaGpuUrl}`);
+  console.log(`CPU instance: ${ollamaCpuUrl}`);
+  console.log(`Routing: ${modelRoutingConfig.cpu.length} model(s) → CPU, others → GPU (default)`);
 });

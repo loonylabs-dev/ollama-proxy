@@ -84,8 +84,10 @@ lerna-debug.log*
 #.lock
 *lock.json
 
-# Cloudflare Tunnel sensitive files  
+# Cloudflare Tunnel sensitive files
 /cloudflare/config.yml
 /cloudflare/*.json
 
 # Keep example files, ignore actual config files
+# Model routing configuration (user-specific)
+model-routing.json
