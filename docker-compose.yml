@@ -71,11 +71,14 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./logs/watchdog:/var/log/watchdog
+      - ./docker-compose.yml:/etc/watchdog/docker-compose.yml:ro
     environment:
       - MONITORED_CONTAINER=ollama-proxy-ollama-1
       - CHECK_INTERVAL=5
       - RESTART_COOLDOWN=60
       - LOG_LEVEL=INFO
+      - COMPOSE_FILE=/etc/watchdog/docker-compose.yml
+      - COMPOSE_PROJECT_NAME=ollama-proxy
     depends_on:
       - ollama
     networks:

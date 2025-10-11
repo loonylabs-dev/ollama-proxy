@@ -1,8 +1,9 @@
 FROM alpine:latest
 
-# Install Docker CLI and dependencies
+# Install Docker CLI with Compose plugin and dependencies
 RUN apk add --no-cache \
     docker-cli \
+    docker-cli-compose \
     bash \
     curl \
     jq \

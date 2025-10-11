@@ -389,17 +389,23 @@ tail -f logs/watchdog/ollama-watchdog.log
 - `offloaded 0/X layers to GPU` (indicates CPU fallback)
 - `gpu VRAM usage didn't recover within timeout`
 - `runner.vram="0 B"` (GPU not allocated)
+- `context limit hit - shifting` (warning only - known Ollama [Issue #2805](https://github.com/ollama/ollama/issues/2805))
+- **Hung requests**: Ollama runner processes running longer than timeout (5 minutes default)
 
 **Features:**
 - **Fully automated** - no manual intervention required
 - **Container-based** - runs as part of your Docker stack
 - **Silent monitoring** - only logs when problems detected
+- **Intelligent escalation** - tries quick restart first, escalates to full recreation if same error persists
+- **Hung request detection** - automatically restarts if ollama runner stuck (addresses [Ollama #2805](https://github.com/ollama/ollama/issues/2805) infinite loop bug)
+- **Log deduplication** - prevents spam from repeated pattern detection (MD5-based, 100 entry cache)
 - **JSON structured logs** for easy monitoring
 - **Health checks** and restart policies
 - **Runs as root** - required for Docker socket access
 - **Configurable** via environment variables:
   - `CHECK_INTERVAL=5` (seconds between checks)
   - `RESTART_COOLDOWN=60` (minimum seconds between restarts)
+  - `HUNG_REQUEST_TIMEOUT=300` (seconds before considering request hung)
   - `LOG_LEVEL=INFO` (DEBUG, INFO, WARNING, ERROR)
 
 **Logging Behavior:**
@@ -409,6 +415,14 @@ tail -f logs/watchdog/ollama-watchdog.log
 
 **Architecture:**
 The watchdog runs as a separate container with access to Docker socket, allowing it to monitor and restart the Ollama container when GPU fallback is detected. It runs as root to access the Docker daemon. This ensures your setup remains production-ready without manual intervention.
+
+**Escalation Strategy:**
+When problems are detected, the watchdog uses an intelligent escalation approach:
+1. **First attempt:** Quick container restart (`docker restart`)
+2. **Second attempt:** Full container recreation via docker-compose (`docker compose up -d --force-recreate`) if the same error persists
+3. **Success tracking:** Resets escalation counter when GPU access is successfully verified
+
+This two-tier approach handles both transient issues (quick restart) and stubborn GPU context errors (full recreation).
 
 ### Docker Issues
 
