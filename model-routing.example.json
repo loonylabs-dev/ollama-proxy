@@ -1,0 +1,9 @@
+{
+  "cpu": [
+    "gemma3:4b",
+    "llama3.2:1b",
+    "phi3:mini",
+    "qwen2.5:0.5b"
+  ],
+  "gpu": ["*"]
+}

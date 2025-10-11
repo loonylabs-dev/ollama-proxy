@@ -32,9 +32,9 @@ A simple proxy server for Ollama API requests with authentication, designed to p
 - **Cloudflare Tunnel Integration**: Built-in support for secure external access
 - **Health Check Endpoint**: Monitor proxy status
 - **GPU & CPU Support**: Dual Ollama instances with intelligent routing
-- **Flexible Compute Selection**: Route requests to GPU or CPU via header
+- **Model-Based Routing**: Configure which models run on CPU vs GPU via JSON config
 - **GPU Acceleration**: NVIDIA GPU support for Ollama GPU container
-- **Flexible Configuration**: Environment-based configuration
+- **Flexible Configuration**: Environment-based and file-based configuration
 
 ## 🚀 Quick Start
 
@@ -61,13 +61,19 @@ A simple proxy server for Ollama API requests with authentication, designed to p
    # Edit .env with your API key and configuration
    ```
 
-3. **Start the services:**
+3. **Configure model routing:**
+   ```bash
+   cp model-routing.example.json model-routing.json
+   # Edit model-routing.json to specify which models run on CPU vs GPU
+   ```
+
+4. **Start the services:**
    ```bash
    npm run start:ollama
    # or directly: docker-compose up -d
    ```
 
-4. **Download models** (in Ollama containers):
+5. **Download models** (in Ollama containers):
    ```bash
    # For GPU instance
    docker exec -it ollama-proxy-ollama-gpu-1 /bin/bash
@@ -111,32 +117,54 @@ The proxy supports both native Ollama API and OpenAI-compatible endpoints. Choos
 
 ### 🎯 CPU/GPU Routing
 
-The proxy runs two separate Ollama instances:
-- **GPU Instance** (default): High-performance inference with NVIDIA GPU
-- **CPU Instance**: Fallback for smaller models or when GPU is busy
+The proxy runs two separate Ollama instances with automatic model-based routing:
+- **GPU Instance** (default): High-performance inference with NVIDIA GPU for large models
+- **CPU Instance**: Optimized for smaller models (≤3B parameters)
 
-**Route to specific instance using the `x-compute-type` header:**
+**Configuration via `model-routing.json`:**
+
+```json
+{
+  "cpu": [
+    "gemma3:4b",
+    "llama3.2:1b",
+    "phi3:mini",
+    "qwen2.5:0.5b"
+  ],
+  "gpu": ["*"]
+}
+```
+
+- **cpu**: Array of model names to route to CPU instance
+- **gpu**: Array of model patterns (use `["*"]` for "all others")
+
+**How it works:**
+1. When a request comes in, the proxy checks the requested model name
+2. If the model is in the `cpu` list, it routes to the CPU instance
+3. Otherwise, it routes to the GPU instance (default)
+4. The routing is transparent - no headers or special configuration needed
+
+**Example requests:**
 
 ```bash
-# GPU (default - no header needed)
+# This will automatically route to GPU (llama3 not in CPU list)
 curl -X POST http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer your_api_key_here" \
   -H "Content-Type: application/json" \
   -d '{"model": "llama3", "messages": [{"role": "user", "content": "Hello"}]}'
 
-# CPU (explicit routing)
+# This will automatically route to CPU (gemma3:4b in CPU list)
 curl -X POST http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer your_api_key_here" \
-  -H "x-compute-type: cpu" \
   -H "Content-Type: application/json" \
-  -d '{"model": "llama3.2:1b", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "gemma3:4b", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 **When to use CPU routing:**
-- Small models (≤3B parameters) where CPU is sufficient
-- GPU is occupied with large model inference
-- Testing or development with lightweight models
+- Small models (≤3B parameters) where CPU performance is sufficient
+- Lightweight models for testing or development
 - Cost optimization for simple queries
+- Running multiple concurrent requests on smaller models
 
 ### Native Ollama API
 
@@ -233,9 +261,41 @@ For secure external access:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `API_KEY` | Required | Authentication key for API access |
-| `OLLAMA_GPU_URL` | `http://ollama-gpu:11434` (Docker)<br>`http://localhost:11434` (local) | Ollama GPU server URL (default target) |
-| `OLLAMA_CPU_URL` | `http://ollama-cpu:11434` (Docker)<br>`http://localhost:11435` (local) | Ollama CPU server URL (via `x-compute-type: cpu`) |
+| `OLLAMA_GPU_URL` | `http://ollama-gpu:11434` (Docker)<br>`http://localhost:11434` (local) | Ollama GPU server URL (default for unlisted models) |
+| `OLLAMA_CPU_URL` | `http://ollama-cpu:11434` (Docker)<br>`http://localhost:11435` (local) | Ollama CPU server URL (for models in `model-routing.json` CPU list) |
 | `PORT` | `3000` | Proxy server port (local dev only) |
+
+</details>
+
+<details>
+<summary>📋 Model Routing Configuration</summary>
+
+The `model-routing.json` file controls which Ollama instance handles each model.
+
+**Default configuration (created from `model-routing.example.json`):**
+```json
+{
+  "cpu": [
+    "gemma3:4b",
+    "llama3.2:1b",
+    "phi3:mini",
+    "qwen2.5:0.5b"
+  ],
+  "gpu": ["*"]
+}
+```
+
+**Configuration rules:**
+- Models listed in `cpu` array are routed to the CPU instance
+- All other models are routed to GPU (indicated by `["*"]` in gpu array)
+- Model names must match exactly (including version tags like `:4b`)
+- Changes require proxy container restart to take effect
+
+**Best practices:**
+- List small models (≤3B parameters) in the CPU array
+- Keep GPU for large models and high-performance tasks
+- Test both instances after configuration changes
+- Use exact model names as they appear in `ollama list`
 
 </details>
 
@@ -288,6 +348,8 @@ ollama-proxy/
 │   ├── config.yml               # Tunnel config (ignored)
 │   ├── config.example.yml       # Tunnel template
 │   └── *.json                   # Credentials (ignored)
+├── model-routing.json           # Model routing config (ignored, user-specific)
+├── model-routing.example.json   # Model routing template
 ├── docker-compose.yml           # Main Docker setup
 ├── docker-compose.example.yml   # Example configuration
 ├── .env.example                 # Environment template
@@ -298,6 +360,7 @@ ollama-proxy/
 
 - Keep your API key secure and never commit it to version control
 - Cloudflare tunnel credentials are sensitive and excluded from git
+- `model-routing.json` is gitignored - your routing config stays private
 - The proxy only accepts requests with valid API keys
 - Internal communication uses Docker networks for security
 
