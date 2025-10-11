@@ -168,20 +168,34 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 
 ### Native Ollama API
 
-Use these endpoints for direct Ollama compatibility or tools that support Ollama natively:
+Use these endpoints for direct Ollama compatibility or tools that support Ollama natively. **Model-based routing is fully supported** - requests are automatically routed to CPU or GPU based on your `model-routing.json` configuration.
 
 **Available Endpoints:**
-- `POST /api/chat` - Chat with streaming support
-- `POST /api/generate` - Text generation  
+- `POST /api/chat` - Chat with streaming support (with model-based routing)
+- `POST /api/generate` - Text generation (with model-based routing)
 - `GET /api/tags` - List installed models
 
-**Example - Chat:**
+**Example - Chat (GPU routing):**
 ```bash
 curl -X POST http://localhost:3000/api/chat \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer your_api_key_here" \\
   -d '{
     "model": "llama3",
+    "messages": [
+      {"role": "user", "content": "Hello, how are you?"}
+    ]
+  }'
+```
+
+**Example - Chat (CPU routing):**
+```bash
+# This routes to CPU if gemma3:4b is in your model-routing.json CPU list
+curl -X POST http://localhost:3000/api/chat \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer your_api_key_here" \\
+  -d '{
+    "model": "gemma3:4b",
     "messages": [
       {"role": "user", "content": "Hello, how are you?"}
     ]
