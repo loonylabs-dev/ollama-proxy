@@ -23,7 +23,22 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const apiKey = process.env.API_KEY;
-const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+const ollamaGpuUrl = process.env.OLLAMA_GPU_URL || 'http://localhost:11434';
+const ollamaCpuUrl = process.env.OLLAMA_CPU_URL || 'http://localhost:11435';
+
+// Helper function to determine target Ollama URL based on compute type header
+const getOllamaUrl = (req: Request): string => {
+  const computeType = req.headers['x-compute-type'] as string | undefined;
+
+  if (computeType === 'cpu') {
+    console.log('Routing to CPU instance');
+    return ollamaCpuUrl;
+  }
+
+  // Default to GPU
+  console.log('Routing to GPU instance (default)');
+  return ollamaGpuUrl;
+};
 
 // Auth middleware
 const authenticate = (req: Request, res: Response, next: NextFunction) => {
@@ -37,6 +52,7 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
 // ---- Proxy forwarder: forward raw stream for /api/* (no body-parser here) ----
 const forwardToOllama = async (req: Request, res: Response) => {
   try {
+    const ollamaUrl = getOllamaUrl(req);
     const endpoint = req.path.replace('/api', '');
     const targetUrl = `${ollamaUrl}/api${endpoint}`;
 
@@ -99,6 +115,7 @@ app.use('/v1', express.json({ limit: '50mb' }));
 // OpenAI-compatible chat completions endpoint (uses parsed JSON)
 app.post('/v1/chat/completions', authenticate, async (req: Request, res: Response) => {
   try {
+    const ollamaUrl = getOllamaUrl(req);
     const openaiRequest: OpenAIChatRequest = req.body;
     const ollamaRequest = transformOpenAIToOllama(openaiRequest);
     const requestId = generateRequestId();
@@ -204,6 +221,7 @@ app.post('/v1/chat/completions', authenticate, async (req: Request, res: Respons
 // Models endpoint (parsing not required)
 app.get('/v1/models', authenticate, async (req: Request, res: Response) => {
   try {
+    const ollamaUrl = getOllamaUrl(req);
     console.log('OpenAI Models request');
 
     const targetUrl = `${ollamaUrl}/api/tags`;
@@ -245,5 +263,6 @@ app.get('/health', authenticate, (req: Request, res: Response) => {
 
 app.listen(port, () => {
   console.log(`Proxy listening on port ${port}`);
-  console.log(`Forwarding requests to Ollama at: ${ollamaUrl}`);
+  console.log(`GPU instance: ${ollamaGpuUrl} (default)`);
+  console.log(`CPU instance: ${ollamaCpuUrl} (via x-compute-type: cpu header)`);
 });
