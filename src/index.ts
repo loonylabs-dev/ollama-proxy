@@ -71,18 +71,30 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
   next();
 };
 
-// ---- Proxy forwarder: forward raw stream for /api/* (no body-parser here) ----
+// ---- Proxy forwarder: forward with model-based routing for /api/* ----
 const forwardToOllama = async (req: Request, res: Response) => {
   try {
-    // For /api/* endpoints, we can't easily extract model from unparsed body
-    // Default to GPU for raw API forwarding
-    const ollamaUrl = ollamaGpuUrl;
     const endpoint = req.path.replace('/api', '');
+
+    // For POST requests with body, extract model for routing
+    let ollamaUrl = ollamaGpuUrl; // default
+    let bodyContent: any = undefined;
+
+    if (req.method === 'POST' && req.body) {
+      bodyContent = req.body;
+
+      // Try to extract model from body for routing
+      if (bodyContent.model) {
+        ollamaUrl = getOllamaUrl(bodyContent.model);
+      } else {
+        console.log('No model found in request body, defaulting to GPU');
+      }
+    }
+
     const targetUrl = `${ollamaUrl}/api${endpoint}`;
+    console.log(`Forwarding ${req.method} ${endpoint} to: ${targetUrl}`);
 
-    console.log(`Forwarding request to: ${targetUrl} (method=${req.method})`);
-
-    // Copy headers except host/authorization (we keep client's headers like content-type)
+    // Copy headers except host/authorization
     const headers: Record<string, string> = {};
     Object.keys(req.headers).forEach(key => {
       if (key.toLowerCase() !== 'host' && key.toLowerCase() !== 'authorization') {
@@ -92,14 +104,13 @@ const forwardToOllama = async (req: Request, res: Response) => {
     });
     if (!headers['content-type']) headers['content-type'] = 'application/json';
 
-    // For GET no body, otherwise forward the raw incoming request stream
-    const body = req.method === 'GET' ? undefined : (req as any);
+    // Prepare body for forwarding
+    const body = req.method === 'GET' ? undefined : JSON.stringify(bodyContent);
 
     const response = await fetch(targetUrl, {
       method: req.method,
       headers,
       body,
-      // optional: keepalive/timeouts could be added here if desired
     });
 
     // set status and copy headers
@@ -129,12 +140,13 @@ const forwardToOllama = async (req: Request, res: Response) => {
   }
 };
 
-// Register proxy routes (no JSON parser before these)
+// Parse JSON for all API endpoints to enable model-based routing
+app.use('/api', express.json({ limit: '50mb' }));
+app.use('/v1', express.json({ limit: '50mb' }));
+
+// Register proxy routes (now with JSON parsing enabled)
 app.get('/api/*', authenticate, forwardToOllama);
 app.post('/api/*', authenticate, forwardToOllama);
-
-// ---- Only parse JSON for /v1 endpoints that actually need it ----
-app.use('/v1', express.json({ limit: '50mb' }));
 
 // OpenAI-compatible chat completions endpoint (uses parsed JSON)
 app.post('/v1/chat/completions', authenticate, async (req: Request, res: Response) => {
