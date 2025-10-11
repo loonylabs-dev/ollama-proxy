@@ -8,6 +8,7 @@ services:
     volumes:
       - ollama_gpu_data:/root/.ollama
       - ./ollama/ollama.json:/root/.ollama/ollama.json
+      - ./models:/models  # Custom GGUF models and Modelfiles
     networks:
       - ollama_network
     environment:

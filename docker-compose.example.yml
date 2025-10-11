@@ -8,6 +8,11 @@ services:
     volumes:
       - ollama_gpu_data:/root/.ollama
       - ./ollama/ollama.json:/root/.ollama/ollama.json
+      # Mount custom GGUF models directory
+      # Place your .gguf files in ./models/gguf/
+      # Create Modelfiles in ./models/modelfiles/
+      # Then use: docker exec ollama-gpu ollama create <name> -f /models/modelfiles/<file>.Modelfile
+      - ./models:/models
     networks:
       - ollama_network
     environment:

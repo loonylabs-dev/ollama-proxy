@@ -69,7 +69,16 @@ lerna-debug.log*
 *.benchmark.json
 
 # Ollama-specific files
-# Add specific file types here if you have any
+# Ignore GGUF files and custom Modelfiles
+/models/gguf/*.gguf
+/models/modelfiles/*.Modelfile
+# Keep folder structure and example files
+!/models/
+!/models/README.md
+!/models/gguf/
+!/models/gguf/.gitkeep
+!/models/modelfiles/
+!/models/modelfiles/example.Modelfile
 
 # User-specific configurations or local scripts
 *.local.js
