@@ -3,7 +3,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](#docker-deployment-recommended)
 [![OpenAI](https://img.shields.io/badge/OpenAI-Compatible-10A37F?style=for-the-badge&logo=openai&logoColor=white)](#openai-compatible-api)
 [![Ollama](https://img.shields.io/badge/Ollama-Native-FF6B35?style=for-the-badge&logo=ollama&logoColor=white)](#native-ollama-api)
-[![GPU](https://img.shields.io/badge/GPU-NVIDIA%20%26%20Intel%20Arc-76B900?style=for-the-badge&logo=nvidia&logoColor=white)](#gpu-selection)
+[![GPU](https://img.shields.io/badge/GPU-NVIDIA-76B900?style=for-the-badge&logo=nvidia&logoColor=white)](#runtime-selection)
 [![Health](https://img.shields.io/badge/Health-Check-4CAF50?style=for-the-badge&logo=heart&logoColor=white)](#general-endpoints)
 
 A simple proxy server for Ollama API requests with authentication, designed to provide OpenAI-compatible endpoints for Ollama models.
@@ -43,7 +43,7 @@ A simple proxy server for Ollama API requests with authentication, designed to p
 
 - Docker and Docker Compose
 - **For NVIDIA GPU:** NVIDIA Docker runtime (nvidia-docker2)
-- **For Intel Arc GPU:** Ubuntu 24.04+ and Intel oneAPI drivers
+- **For CPU-only:** no extra requirements
 - Node.js 18+ (for local development)
 
 </details>
@@ -68,13 +68,13 @@ A simple proxy server for Ollama API requests with authentication, designed to p
    # Edit model-routing.json to specify which models run on CPU vs GPU
    ```
 
-4. **Choose your GPU configuration** (see [GPU Selection](#gpu-selection) below):
+4. **Choose your runtime** (see [Runtime selection](#runtime-selection) below):
    ```bash
-   # For NVIDIA GPUs:
+   # NVIDIA GPU
    docker-compose -f docker-compose.nvidia.yml up -d
 
-   # For Intel Arc GPUs:
-   docker-compose -f docker-compose.intel.yml up -d
+   # CPU-only
+   docker-compose -f docker-compose.cpu.yml up -d
    ```
 
 5. **Download models** (in Ollama containers):
@@ -115,7 +115,7 @@ A simple proxy server for Ollama API requests with authentication, designed to p
 
 </details>
 
-## 🎮 GPU Selection
+## 🎮 Runtime selection
 
 This project supports **two GPU types** with separate Docker Compose configurations:
 
@@ -153,61 +153,35 @@ docker-compose up -d
 
 ---
 
-### Intel Arc GPUs (Discrete & Integrated)
+### CPU-only (no GPU)
 
-**Supported GPUs:**
-- Discrete: Arc A310, A380, A580, A770
-- Integrated: Intel Core Ultra with Arc iGPU (Arc 140V, etc.)
-- Datacenter: Intel Flex, Intel Max series
-
-**Requirements:**
-- **Ubuntu 24.04+** (for latest Intel Arc kernel drivers)
-- Intel oneAPI drivers installed
-- Docker Compose
+- Runs a single Ollama instance on CPU
+- Best for small/medium models or environments without a GPU
 
 **Setup:**
 ```bash
 # Using docker-compose directly
-docker-compose -f docker-compose.intel.yml up -d
+docker-compose -f docker-compose.cpu.yml up -d
 
 # Or create a symlink (Linux)
-ln -s docker-compose.intel.yml docker-compose.yml
+ln -s docker-compose.cpu.yml docker-compose.yml
 docker-compose up -d
 
 # Or copy to docker-compose.yml (Windows)
-copy docker-compose.intel.yml docker-compose.yml
+copy docker-compose.cpu.yml docker-compose.yml
 docker-compose up -d
 ```
-
-**Features:**
-- Uses Intel IPEX-LLM Docker image (`intelanalytics/ipex-llm-inference-cpp-xpu:latest`)
-- oneAPI Level-Zero acceleration
-- Tested with Arc A770 and Intel Core Ultra iGPUs
-- Lower power consumption vs NVIDIA
-
-**Important Notes for Intel Arc:**
-1. **Multiple GPUs:** If you have both Intel and NVIDIA GPUs, set `ONEAPI_DEVICE_SELECTOR` in `docker-compose.intel.yml`:
-   ```yaml
-   environment:
-     - ONEAPI_DEVICE_SELECTOR=level_zero:0  # Select first Intel GPU
-   ```
-   Use `sycl-ls` inside the container to list available devices.
-
-2. **Driver Installation:** Follow Intel's oneAPI installation guide for your distribution.
-
-3. **Performance:** Intel Arc GPUs generally provide good performance for LLMs, especially for models up to 13B parameters.
 
 ---
 
 ### Choosing the Right Configuration
 
-| Factor | NVIDIA | Intel Arc |
-|--------|--------|-----------|
-| **Best For** | Large models (>13B), Maximum performance | Medium models (≤13B), Power efficiency |
-| **VRAM** | Up to 24GB (consumer), 80GB+ (datacenter) | 8-16GB (discrete), 4-8GB (iGPU) |
-| **Power** | 200-450W (high-end) | 75-225W (discrete), 15-30W (iGPU) |
-| **Support** | Mature, production-ready | Newer, actively improving |
-| **Cost** | $$$ (high-end) | $$ (more affordable) |
+| Factor | NVIDIA | CPU-only |
+|--------|--------|----------|
+| Best For | Large models (>13B), maximum performance | Small/medium models, simplicity |
+| Memory | Dedicated GPU VRAM | System RAM/CPU |
+| Power | Higher | Lower |
+| Requirements | NVIDIA drivers + nvidia-docker2 | None |
 
 ## 🔌 API Usage
 
@@ -358,6 +332,7 @@ For secure external access:
    ```bash
    cp cloudflare/config.example.yml cloudflare/config.yml
    # Edit config.yml with your tunnel ID and domain
+   # IMPORTANT: hostname must NOT include protocol or port (use e.g. "api.example.com")
    ```
 
 3. **Add tunnel credentials:**
@@ -397,6 +372,14 @@ The `model-routing.json` file controls which Ollama instance handles each model.
 }
 ```
 
+**CPU-only routing example (route all models to CPU):**
+```json
+{
+  "cpu": ["*"],
+  "gpu": []
+}
+```
+
 **Configuration rules:**
 - Models listed in `cpu` array are routed to the CPU instance
 - All other models are routed to GPU (indicated by `["*"]` in gpu array)
@@ -415,7 +398,7 @@ The `model-routing.json` file controls which Ollama instance handles each model.
 <summary>🐳 Docker Configuration</summary>
 
 The Docker setup includes:
-- **Ollama GPU container**: Runs Ollama with GPU support (NVIDIA or Intel Arc)
+- **Ollama GPU container**: Runs Ollama with NVIDIA GPU support
 - **Ollama CPU container**: Runs Ollama on CPU for smaller models
 - **Proxy container**: Runs the API proxy with intelligent routing
 - **Watchdog GPU container**: Monitors GPU instance health
@@ -423,7 +406,7 @@ The Docker setup includes:
 
 **Two configurations available:**
 - `docker-compose.nvidia.yml` - NVIDIA GPU setup
-- `docker-compose.intel.yml` - Intel Arc GPU setup
+- `docker-compose.cpu.yml` - CPU-only setup
 
 </details>
 
@@ -436,13 +419,12 @@ The Docker setup includes:
 - CUDA runtime with nvidia-docker2
 - Unlimited locked memory
 
-**Intel Arc GPU Setup (`docker-compose.intel.yml`):**
+**CPU-only Setup (`docker-compose.cpu.yml`):**
 - 16GB memory limit
 - 8GB memory reservation
-- oneAPI Level-Zero acceleration
-- Intel IPEX-LLM Docker image
+- Optimized CPU settings (threads, batch size)
 
-See [GPU Selection](#gpu-selection) for detailed comparison.
+See [Runtime selection](#runtime-selection) for details.
 
 </details>
 
@@ -486,11 +468,12 @@ ollama-proxy/
 │   └── OLLAMA_SETTINGS.md       # Ollama configuration
 ├── model-routing.json           # Model routing config (ignored, user-specific)
 ├── model-routing.example.json   # Model routing template
-├── docker-compose.yml           # GPU selection guide (documentation)
+├── model-routing.example.cpu-only.json   # CPU-only routing template (wildcard to CPU)
+├── docker-compose.yml           # Runtime selection guide (documentation)
 ├── docker-compose.nvidia.yml    # NVIDIA GPU configuration
-├── docker-compose.intel.yml     # Intel Arc GPU configuration
+├── docker-compose.cpu.yml       # CPU-only configuration
 ├── docker-compose.example.nvidia.yml  # NVIDIA example configuration
-├── docker-compose.example.intel.yml   # Intel Arc example configuration
+├── docker-compose.example.cpu.yml     # CPU-only example configuration
 ├── Dockerfile                   # Proxy container image
 ├── .env                         # Environment variables (ignored)
 ├── .env.example                 # Environment template
@@ -675,94 +658,6 @@ When problems are detected, the watchdog uses an intelligent escalation approach
 
 This two-tier approach handles both transient issues (quick restart) and stubborn GPU context errors (full recreation).
 
-### Intel Arc GPU Issues
-
-**Problem:** Intel Arc GPU not detected or not being used
-
-**Symptoms:**
-- Container starts but Ollama falls back to CPU
-- "No suitable device found" errors
-- Poor inference performance despite having Arc GPU
-
-**Solutions:**
-
-1. **Verify GPU Device Access**
-   ```bash
-   # Check if /dev/dri exists and is accessible
-   ls -la /dev/dri
-
-   # Should show renderD128 (or similar) for Intel GPU
-   # Example output:
-   # drwxr-xr-x  3 root root   100 Jan 15 10:00 .
-   # drwxr-xr-x 20 root root  4300 Jan 15 10:00 ..
-   # drwxr-xr-x  2 root root    80 Jan 15 10:00 by-path
-   # crw-rw----  1 root video 226, 0 Jan 15 10:00 card0
-   # crw-rw----  1 root render 226, 128 Jan 15 10:00 renderD128
-   ```
-
-2. **Check oneAPI Device Selector**
-   ```bash
-   # Enter the container
-   docker exec -it ollama-proxy-ollama-gpu-1 /bin/bash
-
-   # List available Intel devices
-   sycl-ls
-
-   # Should show Intel Level-Zero devices
-   # Example output:
-   # [ext_oneapi_level_zero:gpu:0] Intel(R) Level-Zero, Intel(R) Arc(TM) A770 Graphics
-   ```
-
-3. **Multiple GPU Systems (Intel + NVIDIA)**
-
-   If you have both Intel and NVIDIA GPUs, ensure correct device selection in `docker-compose.intel.yml`:
-   ```yaml
-   environment:
-     - ONEAPI_DEVICE_SELECTOR=level_zero:0  # First Intel GPU
-     # Or specify by platform:
-     # - ONEAPI_DEVICE_SELECTOR=level_zero:gpu:0
-   ```
-
-   Use `sycl-ls` to identify the correct device index.
-
-4. **Ubuntu Version Check**
-
-   Intel Arc requires Ubuntu 24.04+ for optimal kernel driver support:
-   ```bash
-   lsb_release -a
-   # Should show: Ubuntu 24.04 or newer
-   ```
-
-   For older Ubuntu versions, you may need to manually install Intel compute runtime.
-
-5. **Verify Intel Container Image**
-
-   Check if the correct Intel IPEX-LLM image is being used:
-   ```bash
-   docker images | grep ipex-llm
-   # Should show: intelanalytics/ipex-llm-inference-cpp-xpu
-   ```
-
-6. **Check Ollama Logs for Intel GPU**
-   ```bash
-   docker logs ollama-proxy-ollama-gpu-1 -f
-
-   # Look for successful GPU initialization:
-   # - "Intel GPU detected"
-   # - "Using Level-Zero backend"
-   # - Model layers being offloaded to GPU
-   ```
-
-**Performance Tips for Intel Arc:**
-- Intel Arc GPUs work best with models ≤13B parameters
-- For Arc iGPUs (like Arc 140V), stick to smaller models (≤7B)
-- Adjust `OLLAMA_NUM_CTX` based on available VRAM (default: 16384 tokens)
-- Monitor VRAM usage: Intel Arc typically has 8-16GB (discrete) or 4-8GB (iGPU)
-
-**Known Limitations:**
-- Intel Arc support is newer than NVIDIA; some models may not be optimized
-- IPEX-LLM updates frequently; consider updating the Docker image periodically
-- Windows support for Intel Arc with Docker is limited; Linux strongly recommended
 
 ### Docker Issues
 

@@ -34,26 +34,19 @@
 #   docker-compose up -d
 #
 # ============================================================================
-# OPTION 2: Intel Arc GPU Setup (A380, A770, Arc 140V iGPU, etc.)
+# OPTION 2: CPU-only Setup (No GPU)
 # ----------------------------------------------------------------------------
-# Use this if you have:
-# - Intel Arc discrete GPUs (A310, A380, A580, A770)
-# - Intel Arc integrated GPUs (Intel Core Ultra with Arc iGPU)
-# - Intel Flex or Max series (datacenter)
-#
-# Requirements:
-# - Ubuntu 24.04+ (for latest Intel Arc kernel drivers)
-# - Intel oneAPI drivers installed
+# Use this if you do not have a supported NVIDIA GPU or prefer CPU-only.
 #
 # Start with:
-#   docker-compose -f docker-compose.intel.yml up -d
+#   docker-compose -f docker-compose.cpu.yml up -d
 #
 # Or create a symlink (Linux):
-#   ln -s docker-compose.intel.yml docker-compose.yml
+#   ln -s docker-compose.cpu.yml docker-compose.yml
 #   docker-compose up -d
 #
 # Or copy to docker-compose.yml (Windows):
-#   copy docker-compose.intel.yml docker-compose.yml
+#   copy docker-compose.cpu.yml docker-compose.yml
 #   docker-compose up -d
 #
 # ============================================================================

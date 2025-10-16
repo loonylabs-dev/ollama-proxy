@@ -1,0 +1,42 @@
+services:
+  # CPU-only example Compose
+  ollama:
+    image: ollama/ollama:0.12.0
+    pull_policy: if_not_present
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama/ollama.json:/root/.ollama/ollama.json
+    networks:
+      - ollama_network
+    environment:
+      - OLLAMA_DEBUG=1
+      - OLLAMA_KEEP_ALIVE=60m
+      - OLLAMA_VERBOSE=1
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_NUM_CTX=16384
+      - OLLAMA_NUM_THREAD=16
+      - OLLAMA_MLOCK=false
+      - OLLAMA_NUM_BATCH=512
+    command: serve
+
+  proxy:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./model-routing.json:/app/model-routing.json:ro
+    environment:
+      - API_KEY=${API_KEY}
+      - OLLAMA_GPU_URL=${OLLAMA_GPU_URL:-http://ollama:11434}
+      - OLLAMA_CPU_URL=${OLLAMA_CPU_URL:-http://ollama:11434}
+    depends_on:
+      - ollama
+    networks:
+      - ollama_network
+
+volumes:
+  ollama_data:
+
+networks:
+  ollama_network:
