@@ -166,8 +166,10 @@ docker-compose up -d
 # 2. Pull the test model
 docker exec -it ollama-cpu ollama pull qwen2.5:0.5b
 
-# 3. Verify proxy is running
-curl -H "Authorization: Bearer your-api-key" http://localhost:3000/health
+# 3. Configure PROXY_URL in .env (see Configuration section below)
+
+# 4. Verify proxy is accessible
+curl -H "Authorization: Bearer your-api-key" ${PROXY_URL}/health
 ```
 
 **Expected Results**:
@@ -197,36 +199,91 @@ npm run test:integration     # Run only integration tests
 The tests use the following environment variables (with defaults):
 
 ```bash
-# Proxy URL (default: http://localhost:3000)
-PROXY_URL=http://localhost:3000
+# Proxy URL - REQUIRED for integration tests
+# See .env.example for configuration options
+PROXY_URL=https://ollama.yourdomain.com
 
-# API Key for authentication (default: test-api-key)
+# API Key for authentication (from your .env file)
 API_KEY=your-api-key-here
 ```
 
-You can set these in a `.env.test` file:
+### Important: Proxy URL Configuration
+
+**The proxy port (3000) is NOT exposed to the host by default for security reasons.**
+
+You have two options for running integration tests:
+
+#### Option 1: Cloudflare Tunnel (RECOMMENDED)
+
+Use your Cloudflare Tunnel URL configured in `cloudflare/config.yml`:
 
 ```bash
-# .env.test
-PROXY_URL=http://localhost:3000
-API_KEY=my-secret-key
+# .env
+PROXY_URL=https://ollama.yourdomain.com
+API_KEY=your-api-key-here
 ```
+
+**Advantages:**
+- ✅ No ports exposed to host (more secure)
+- ✅ Tests against production-like environment
+- ✅ Cloudflare security features active
+- ✅ Works exactly like production
+
+#### Option 2: Localhost with Port Mapping
+
+Add port mapping to `docker-compose.yml` (or `docker-compose.nvidia.yml`):
+
+```yaml
+proxy:
+  ports:
+    - "3000:3000"  # Add this line
+  build: .
+  # ... rest of config
+```
+
+Then configure:
+
+```bash
+# .env
+PROXY_URL=http://localhost:3000
+API_KEY=your-api-key-here
+```
+
+**Disadvantages:**
+- ⚠️ Exposes port 3000 on your host machine
+- ⚠️ Additional attack surface
+- ⚠️ Different from production setup
 
 ---
 
 ## ⚠️ Common Issues and Solutions
 
-### "Cannot connect to proxy"
+### "Cannot connect to proxy" / "ECONNREFUSED localhost:3000"
 
-**Cause**: Ollama Proxy not running
-**Solution**:
-```bash
-# Start the proxy in dev mode
-npm run dev
+**Cause**: Proxy port not exposed to host (this is intentional for security)
 
-# OR start with Docker
-docker-compose up -d
-```
+**Solutions:**
+
+1. **Use Cloudflare Tunnel (RECOMMENDED)**:
+   ```bash
+   # In .env
+   PROXY_URL=https://ollama.yourdomain.com
+   ```
+
+2. **Temporarily add port mapping for testing**:
+   ```yaml
+   # In docker-compose.yml
+   proxy:
+     ports:
+       - "3000:3000"
+   ```
+   Then restart: `docker-compose down && docker-compose up -d`
+
+3. **Check if proxy container is running**:
+   ```bash
+   docker ps | grep proxy
+   # Should show: ollama-proxy-proxy-1
+   ```
 
 ### "Model not found" errors
 
@@ -240,19 +297,26 @@ docker exec -it ollama-cpu ollama pull qwen2.5:0.5b
 docker exec -it ollama-cpu ollama list
 ```
 
-### "ECONNREFUSED" errors
+### "ECONNREFUSED" or "connect ETIMEDOUT" errors
 
-**Cause**: Ollama containers not running
+**Cause**: Either:
+1. Ollama containers not running, OR
+2. Proxy port not accessible (not mapped to host)
+
 **Solution**:
 ```bash
-# Check container status
+# 1. Check container status
 docker ps
 
-# Start containers
+# 2. Start containers if needed
 docker-compose up -d
 
-# Check logs
-docker-compose logs -f
+# 3. Configure PROXY_URL in .env
+#    Use Cloudflare Tunnel URL (recommended)
+#    OR add port mapping to docker-compose.yml
+
+# 4. Check logs
+docker-compose logs -f proxy
 ```
 
 ### Integration tests timeout

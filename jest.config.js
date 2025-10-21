@@ -27,4 +27,6 @@ export default {
   coverageReporters: ['text', 'lcov', 'html'],
   verbose: true,
   testTimeout: 30000,
+  // Load environment variables before running tests
+  setupFiles: ['<rootDir>/jest.setup.js'],
 };
